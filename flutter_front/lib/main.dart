@@ -1,121 +1,158 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
+import 'theme/app_colors.dart';
+import 'widgets/app_card.dart';
+import 'widgets/glassmorphism/glassmorphism_container.dart';
+import 'screens/login_screen.dart';
+import 'screens/chat_list_screen.dart';
+import 'screens/chat_detail_screen.dart';
+import 'screens/contacts_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ChatSaoApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ChatSaoApp extends StatelessWidget {
+  const ChatSaoApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'ChatSao - IM',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const AppNavigator(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class AppNavigator extends StatefulWidget {
+  const AppNavigator({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<AppNavigator> createState() => _AppNavigatorState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _AppNavigatorState extends State<AppNavigator> {
+  String _currentScreen = 'login';
 
-  void _incrementCounter() {
+  void _navigateTo(String screen) {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _currentScreen = screen;
     });
   }
 
+  bool get _showBottomNav =>
+      _currentScreen == 'chatList' ||
+      _currentScreen == 'contacts' ||
+      _currentScreen == 'settings';
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: KeyedSubtree(
+                key: ValueKey(_currentScreen),
+                child: _buildScreen(),
+              ),
             ),
+            if (_showBottomNav)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 32,
+                child: Center(
+                  child: _buildBottomNav(),
+                ),
+              ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+
+  Widget _buildScreen() {
+    switch (_currentScreen) {
+      case 'login':
+        return LoginScreen(
+          onLogin: () => _navigateTo('chatList'),
+        );
+      case 'chatList':
+        return ChatListScreen(
+          onChatSelect: () => _navigateTo('chat'),
+        );
+      case 'chat':
+        return ChatDetailScreen(
+          onBack: () => _navigateTo('chatList'),
+        );
+      case 'contacts':
+        return const ContactsScreen();
+      case 'settings':
+        return SettingsScreen(
+          onLogout: () => _navigateTo('login'),
+        );
+      default:
+        return LoginScreen(
+          onLogin: () => _navigateTo('chatList'),
+        );
+    }
+  }
+
+  Widget _buildBottomNav() {
+    return GlassmorphismContainer.bottomNav(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _navItem(Icons.chat_bubble, isActive: _currentScreen == 'chatList', onTap: () => _navigateTo('chatList')),
+            const SizedBox(width: 28),
+            _navItem(Icons.people_outline, isActive: _currentScreen == 'contacts', onTap: () => _navigateTo('contacts')),
+            const SizedBox(width: 28),
+            _navItem(Icons.settings_outlined, isActive: _currentScreen == 'settings', onTap: () => _navigateTo('settings')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(IconData icon, {required bool isActive, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.brandPrimary : Colors.transparent,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(24),
+            topRight: Radius.circular(isActive ? 36 : 24),
+            bottomLeft: Radius.circular(isActive ? 30 : 24),
+            bottomRight: const Radius.circular(24),
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [],
+        ),
+        child: Icon(
+          icon,
+          color: isActive ? Colors.white : AppColors.textLight,
+          size: 26,
+        ),
       ),
     );
   }
