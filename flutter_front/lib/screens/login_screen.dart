@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_card.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLogin;
@@ -11,9 +12,16 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+enum AuthMode { login, register }
+
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   bool _showPassword = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  AuthMode _authMode = AuthMode.login;
   late AnimationController _floatController;
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   @override
   void initState() {
@@ -27,7 +35,39 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void dispose() {
     _floatController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleAuth() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = '请填写用户名和密码');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      if (_authMode == AuthMode.register) {
+        await AuthService.register(username, password);
+        setState(() => _errorMessage = '注册成功，请登录');
+        _authMode = AuthMode.login;
+      } else {
+        await AuthService.login(username, password);
+        widget.onLogin();
+      }
+    } catch (e) {
+      setState(() => _errorMessage = e.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -87,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               const SizedBox(height: 32),
               Text(
-                'Welcome Back!',
+                _authMode == AuthMode.login ? 'Welcome Back!' : 'Create Account',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   letterSpacing: -0.5,
@@ -97,7 +137,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               SizedBox(
                 width: 280,
                 child: Text(
-                  'Log in to continue your conversation with AI and friends.',
+                  _authMode == AuthMode.login
+                      ? 'Log in to continue your conversation with AI and friends.'
+                      : 'Sign up to start chatting with AI and friends.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.textLight,
@@ -108,14 +150,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               const SizedBox(height: 40),
               OrganicInput(
-                prefixIcon: const Text('✉', style: TextStyle(fontSize: 20)),
-                hintText: 'Email address',
-                keyboardType: TextInputType.emailAddress,
+                prefixIcon: const Text('👤', style: TextStyle(fontSize: 18)),
+                hintText: 'Username',
+                controller: _usernameController,
               ),
               const SizedBox(height: 16),
               OrganicInput(
-                prefixIcon: const Text('🔒', style: TextStyle(fontSize: 20)),
+                prefixIcon: const Text('🔒', style: TextStyle(fontSize: 18)),
                 hintText: 'Password',
+                controller: _passwordController,
                 obscureText: !_showPassword,
                 suffixIcon: Icon(
                   _showPassword ? Icons.visibility_off : Icons.visibility,
@@ -128,27 +171,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   });
                 },
               ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {},
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
                   child: Text(
-                    'Forgot password?',
+                    _errorMessage!,
                     style: TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color: AppColors.redBadge,
+                      fontSize: 13,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              ),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: widget.onLogin,
+                  onPressed: _isLoading ? null : _handleAuth,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     padding: EdgeInsets.zero,
@@ -173,14 +213,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ),
                     child: Container(
                       alignment: Alignment.center,
-                      child: const Text(
-                        'Log In',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text(
+                              _authMode == AuthMode.login ? 'Log In' : 'Sign Up',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -219,13 +269,22 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    "Don't have an account? ",
+                    _authMode == AuthMode.login
+                        ? "Don't have an account? "
+                        : "Already have an account? ",
                     style: TextStyle(color: AppColors.textLight, fontSize: 14),
                   ),
                   GestureDetector(
-                    onTap: () {},
+                    onTap: () {
+                      setState(() {
+                        _authMode = _authMode == AuthMode.login
+                            ? AuthMode.register
+                            : AuthMode.login;
+                        _errorMessage = null;
+                      });
+                    },
                     child: Text(
-                      'Sign Up',
+                      _authMode == AuthMode.login ? 'Sign Up' : 'Log In',
                       style: TextStyle(
                         color: AppColors.orange400,
                         fontSize: 14,

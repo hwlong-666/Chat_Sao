@@ -8,8 +8,11 @@ import 'screens/chat_list_screen.dart';
 import 'screens/chat_detail_screen.dart';
 import 'screens/contacts_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/auth_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService.init();
   runApp(const ChatSaoApp());
 }
 
@@ -35,12 +38,34 @@ class AppNavigator extends StatefulWidget {
 }
 
 class _AppNavigatorState extends State<AppNavigator> {
-  String _currentScreen = 'login';
+  String? _currentScreen;
+  bool _isCheckingAuth = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthState();
+  }
+
+  Future<void> _checkAuthState() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    setState(() {
+      _currentScreen = AuthService.isLoggedIn ? 'chatList' : 'login';
+      _isCheckingAuth = false;
+    });
+  }
 
   void _navigateTo(String screen) {
-    setState(() {
-      _currentScreen = screen;
-    });
+    setState(() => _currentScreen = screen);
+  }
+
+  void _handleLogin() {
+    _navigateTo('chatList');
+  }
+
+  Future<void> _handleLogout() async {
+    await AuthService.logout();
+    _navigateTo('login');
   }
 
   bool get _showBottomNav =>
@@ -50,6 +75,51 @@ class _AppNavigatorState extends State<AppNavigator> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingAuth || _currentScreen == null) {
+      return GradientBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFFFFEBB4),
+                        Color(0xFFFFBEBE),
+                        Color(0xFFA0D2FF),
+                      ],
+                    ),
+                  ),
+                  child: AvatarBlob(
+                    size: 80,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: const [],
+                    child: Container(
+                      color: AppColors.brandPrimary.withValues(alpha: 0.1),
+                      child: const Icon(Icons.auto_awesome, size: 32, color: AppColors.brandPrimary),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text('ChatSao', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.orange200),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -82,27 +152,17 @@ class _AppNavigatorState extends State<AppNavigator> {
   Widget _buildScreen() {
     switch (_currentScreen) {
       case 'login':
-        return LoginScreen(
-          onLogin: () => _navigateTo('chatList'),
-        );
+        return LoginScreen(onLogin: _handleLogin);
       case 'chatList':
-        return ChatListScreen(
-          onChatSelect: () => _navigateTo('chat'),
-        );
+        return ChatListScreen(onChatSelect: () => _navigateTo('chat'));
       case 'chat':
-        return ChatDetailScreen(
-          onBack: () => _navigateTo('chatList'),
-        );
+        return ChatDetailScreen(onBack: () => _navigateTo('chatList'));
       case 'contacts':
         return const ContactsScreen();
       case 'settings':
-        return SettingsScreen(
-          onLogout: () => _navigateTo('login'),
-        );
+        return SettingsScreen(onLogout: _handleLogout);
       default:
-        return LoginScreen(
-          onLogin: () => _navigateTo('chatList'),
-        );
+        return LoginScreen(onLogin: _handleLogin);
     }
   }
 
@@ -148,11 +208,7 @@ class _AppNavigatorState extends State<AppNavigator> {
                 ]
               : [],
         ),
-        child: Icon(
-          icon,
-          color: isActive ? Colors.white : AppColors.textLight,
-          size: 26,
-        ),
+        child: Icon(icon, color: isActive ? Colors.white : AppColors.textLight, size: 26),
       ),
     );
   }
