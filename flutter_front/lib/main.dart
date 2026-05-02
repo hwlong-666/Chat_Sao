@@ -9,7 +9,6 @@ import 'screens/chat_detail_screen.dart';
 import 'screens/contacts_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/auth_service.dart';
-import 'services/friend_service.dart';
 import 'services/websocket_service.dart';
 
 void main() async {
@@ -44,7 +43,6 @@ class _AppNavigatorState extends State<AppNavigator> {
   bool _isCheckingAuth = true;
   int? _chatFriendId;
   String? _chatFriendName;
-  final GlobalKey<ChatListScreenState> _chatListKey = GlobalKey();
 
   @override
   void initState() {
@@ -72,7 +70,7 @@ class _AppNavigatorState extends State<AppNavigator> {
       }
     });
     if (screen == 'chatList') {
-      _chatListKey.currentState?.loadSessions();
+      AppEventBus.emit(AppEventBus.refreshSessions);
     }
   }
 
@@ -173,7 +171,7 @@ class _AppNavigatorState extends State<AppNavigator> {
       case 'login':
         return LoginScreen(onLogin: _handleLogin);
       case 'chatList':
-        return ChatListScreen(key: _chatListKey, onChatSelect: (friendId, friendName) => _navigateTo('chat', friendId: friendId, friendName: friendName));
+        return ChatListScreen(onChatSelect: (friendId, friendName) => _navigateTo('chat', friendId: friendId, friendName: friendName));
       case 'chat':
         return ChatDetailScreen(onBack: () => _navigateTo('chatList'), friendId: _chatFriendId, friendName: _chatFriendName);
       case 'contacts':

@@ -72,9 +72,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _initChat() async {
-    if (!_wsService.isConnected) {
-      _wsService.connect();
-    }
+    _wsService.connect();
+
+    await Future.delayed(const Duration(milliseconds: 300));
 
     _wsSubscription = _wsService.messageStream.listen(_onMessageReceived);
 
@@ -130,13 +130,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
 
-    _wsService.sendMessage({
+    final sent = _wsService.sendMessage({
       'receiverId': _friendId,
       'content': text,
     });
 
-    _inputController.clear();
-    _focusNode.requestFocus();
+    if (sent) {
+      _inputController.clear();
+      _focusNode.requestFocus();
+    }
   }
 
   void _scrollToBottom() {

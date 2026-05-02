@@ -5,6 +5,9 @@ import org.example.entity.ChatMessage;
 import org.example.mapper.ChatMessageMapper;
 import org.example.mapper.FriendRelationMapper;
 import org.example.service.ChatMessageService;
+import org.example.service.RedisService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -13,12 +16,16 @@ import java.util.*;
 @Service
 public class ChatMessageServiceImpl implements ChatMessageService {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageServiceImpl.class);
+
     private final ChatMessageMapper chatMessageMapper;
     private final FriendRelationMapper friendRelationMapper;
+    private final RedisService redisService;
 
-    public ChatMessageServiceImpl(ChatMessageMapper chatMessageMapper, FriendRelationMapper friendRelationMapper) {
+    public ChatMessageServiceImpl(ChatMessageMapper chatMessageMapper, FriendRelationMapper friendRelationMapper, RedisService redisService) {
         this.chatMessageMapper = chatMessageMapper;
         this.friendRelationMapper = friendRelationMapper;
+        this.redisService = redisService;
     }
 
     @Override
@@ -48,7 +55,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         Map<Long, ChatSessionVO> sessionMap = new LinkedHashMap<>();
-
         for (Map<String, Object> friend : friends) {
             Long friendId = ((Number) friend.get("userId")).longValue();
             String username = (String) friend.get("username");
@@ -69,8 +75,30 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 if (vo != null) {
                     vo.setLastMessage(msg.getContent());
                     vo.setLastTime(msg.getSendTime() != null ? msg.getSendTime().toString() : "");
-                    int unread = chatMessageMapper.countUnreadWithFriend(userId, otherId);
-                    vo.setUnreadCount(unread);
+                }
+            }
+        }
+
+        Map<Long, Integer> redisUnread;
+        try {
+            redisUnread = redisService.getAllUnread(userId);
+        } catch (Exception e) {
+            log.warn("Redis getAllUnread failed: {}", e.getMessage());
+            redisUnread = Collections.emptyMap();
+        }
+        for (Map.Entry<Long, ChatSessionVO> entry : sessionMap.entrySet()) {
+            Long friendId = entry.getKey();
+            ChatSessionVO vo = entry.getValue();
+            Integer redisCount = redisUnread.get(friendId);
+            if (redisCount != null && redisCount > 0) {
+                vo.setUnreadCount(redisCount);
+            } else {
+                int dbCount = chatMessageMapper.countUnreadWithFriend(userId, friendId);
+                vo.setUnreadCount(dbCount);
+                if (dbCount > 0) {
+                    try {
+                        redisService.incrUnread(userId, friendId);
+                    } catch (Exception ignored) {}
                 }
             }
         }
@@ -81,5 +109,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Override
     public void markAsRead(Long userId, Long friendId) {
         chatMessageMapper.markAsRead(userId, friendId);
+        try {
+            redisService.clearUnread(userId, friendId);
+        } catch (Exception e) {
+            log.warn("Redis clearUnread failed: {}", e.getMessage());
+        }
     }
 }

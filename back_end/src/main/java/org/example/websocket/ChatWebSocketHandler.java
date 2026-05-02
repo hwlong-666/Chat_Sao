@@ -3,24 +3,32 @@ package org.example.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.entity.ChatMessage;
 import org.example.service.ChatMessageService;
+import org.example.service.RedisService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.io.IOException;
 import java.util.Map;
 
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
+
     private final ChatMessageService chatMessageService;
     private final WebSocketSessionManager sessionManager;
+    private final RedisService redisService;
     private final ObjectMapper objectMapper;
 
-    public ChatWebSocketHandler(ChatMessageService chatMessageService, WebSocketSessionManager sessionManager) {
+    public ChatWebSocketHandler(ChatMessageService chatMessageService, WebSocketSessionManager sessionManager, RedisService redisService) {
         this.chatMessageService = chatMessageService;
         this.sessionManager = sessionManager;
+        this.redisService = redisService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -29,6 +37,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         Long userId = getUserId(session);
         if (userId != null) {
             sessionManager.addSession(userId, session);
+            log.info("WebSocket connected: userId={}", userId);
         }
     }
 
@@ -40,30 +49,48 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        Map<String, Object> payload = objectMapper.readValue(message.getPayload(), Map.class);
-        Long receiverId = Long.valueOf(payload.get("receiverId").toString());
-        String content = payload.get("content").toString();
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message.getPayload(), Map.class);
 
-        ChatMessage saved = chatMessageService.saveMessage(senderId, receiverId, content);
+            String type = payload.get("type") != null ? payload.get("type").toString() : null;
+            if ("PING".equalsIgnoreCase(type)) {
+                sessionManager.refreshOnline(senderId);
+                safeSend(session, "{\"type\":\"PONG\"}");
+                return;
+            }
 
-        Map<String, Object> response = Map.of(
-                "msgId", saved.getMsgId(),
-                "senderId", saved.getSenderId(),
-                "receiverId", saved.getReceiverId(),
-                "content", saved.getContent(),
-                "sendTime", saved.getSendTime().toString(),
-                "chatType", saved.getChatType(),
-                "msgType", saved.getMsgType()
-        );
+            Long receiverId = Long.valueOf(payload.get("receiverId").toString());
+            String content = payload.get("content").toString();
 
-        String json = objectMapper.writeValueAsString(response);
+            ChatMessage saved = chatMessageService.saveMessage(senderId, receiverId, content);
 
-        WebSocketSession receiverSession = sessionManager.getSession(receiverId);
-        if (receiverSession != null && receiverSession.isOpen()) {
-            receiverSession.sendMessage(new TextMessage(json));
+            try {
+                redisService.incrUnread(receiverId, senderId);
+            } catch (Exception e) {
+                log.warn("Redis incrUnread failed: {}", e.getMessage());
+            }
+
+            Map<String, Object> response = Map.of(
+                    "msgId", saved.getMsgId(),
+                    "senderId", saved.getSenderId(),
+                    "receiverId", saved.getReceiverId(),
+                    "content", saved.getContent(),
+                    "sendTime", saved.getSendTime().toString(),
+                    "chatType", saved.getChatType(),
+                    "msgType", saved.getMsgType()
+            );
+
+            String json = objectMapper.writeValueAsString(response);
+
+            WebSocketSession receiverSession = sessionManager.getSession(receiverId);
+            if (receiverSession != null && receiverSession.isOpen()) {
+                safeSend(receiverSession, json);
+            }
+
+            safeSend(session, json);
+        } catch (Exception e) {
+            log.error("handleTextMessage error: {}", e.getMessage());
         }
-
-        session.sendMessage(new TextMessage(json));
     }
 
     @Override
@@ -71,6 +98,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         Long userId = getUserId(session);
         if (userId != null) {
             sessionManager.removeSession(userId);
+            log.info("WebSocket closed: userId={}, status={}", userId, status);
         }
     }
 
@@ -81,7 +109,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sessionManager.removeSession(userId);
         }
         if (session.isOpen()) {
-            session.close(CloseStatus.SERVER_ERROR);
+            try {
+                session.close(CloseStatus.SERVER_ERROR);
+            } catch (IOException ignored) {}
+        }
+        log.warn("Transport error: userId={}, msg={}", userId, exception.getMessage());
+    }
+
+    private void safeSend(WebSocketSession session, String text) {
+        if (session == null || !session.isOpen()) return;
+        try {
+            synchronized (session) {
+                session.sendMessage(new TextMessage(text));
+            }
+        } catch (Exception e) {
+            log.warn("safeSend failed: {}", e.getMessage());
         }
     }
 

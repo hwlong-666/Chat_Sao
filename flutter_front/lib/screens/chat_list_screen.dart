@@ -22,6 +22,7 @@ class ChatListScreenState extends State<ChatListScreen> {
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription? _wsSubscription;
+  StreamSubscription? _eventSubscription;
   int? _currentUserId;
 
   @override
@@ -31,11 +32,17 @@ class ChatListScreenState extends State<ChatListScreen> {
     loadSessions();
     _searchController.addListener(_onSearchChanged);
     _wsSubscription = WebSocketService().messageStream.listen(_onWsMessage);
+    _eventSubscription = AppEventBus.stream.listen((event) {
+      if (event == AppEventBus.refreshSessions) {
+        loadSessions();
+      }
+    });
   }
 
   @override
   void dispose() {
     _wsSubscription?.cancel();
+    _eventSubscription?.cancel();
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
