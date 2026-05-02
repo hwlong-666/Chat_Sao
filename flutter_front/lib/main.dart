@@ -9,6 +9,8 @@ import 'screens/chat_detail_screen.dart';
 import 'screens/contacts_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/auth_service.dart';
+import 'services/friend_service.dart';
+import 'services/websocket_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +42,9 @@ class AppNavigator extends StatefulWidget {
 class _AppNavigatorState extends State<AppNavigator> {
   String? _currentScreen;
   bool _isCheckingAuth = true;
+  int? _chatFriendId;
+  String? _chatFriendName;
+  final GlobalKey<ChatListScreenState> _chatListKey = GlobalKey();
 
   @override
   void initState() {
@@ -53,17 +58,31 @@ class _AppNavigatorState extends State<AppNavigator> {
       _currentScreen = AuthService.isLoggedIn ? 'chatList' : 'login';
       _isCheckingAuth = false;
     });
+    if (AuthService.isLoggedIn) {
+      WebSocketService().connect();
+    }
   }
 
-  void _navigateTo(String screen) {
-    setState(() => _currentScreen = screen);
+  void _navigateTo(String screen, {int? friendId, String? friendName}) {
+    setState(() {
+      _currentScreen = screen;
+      if (friendId != null) {
+        _chatFriendId = friendId;
+        _chatFriendName = friendName;
+      }
+    });
+    if (screen == 'chatList') {
+      _chatListKey.currentState?.loadSessions();
+    }
   }
 
   void _handleLogin() {
+    WebSocketService().connect();
     _navigateTo('chatList');
   }
 
   Future<void> _handleLogout() async {
+    WebSocketService().disconnect();
     await AuthService.logout();
     _navigateTo('login');
   }
@@ -154,9 +173,9 @@ class _AppNavigatorState extends State<AppNavigator> {
       case 'login':
         return LoginScreen(onLogin: _handleLogin);
       case 'chatList':
-        return ChatListScreen(onChatSelect: () => _navigateTo('chat'));
+        return ChatListScreen(key: _chatListKey, onChatSelect: (friendId, friendName) => _navigateTo('chat', friendId: friendId, friendName: friendName));
       case 'chat':
-        return ChatDetailScreen(onBack: () => _navigateTo('chatList'));
+        return ChatDetailScreen(onBack: () => _navigateTo('chatList'), friendId: _chatFriendId, friendName: _chatFriendName);
       case 'contacts':
         return const ContactsScreen();
       case 'settings':
