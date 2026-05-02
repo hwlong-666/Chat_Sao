@@ -53,6 +53,7 @@ class ChatListScreenState extends State<ChatListScreen> {
     final receiverId = data['receiverId'] as int?;
     final content = data['content'] as String?;
     final sendTime = data['sendTime'] as String?;
+    final msgType = data['msgType'] as int? ?? 0;
     if (senderId == null || receiverId == null) return;
 
     final isFromMe = senderId == _currentUserId;
@@ -63,6 +64,7 @@ class ChatListScreenState extends State<ChatListScreen> {
       if (idx != -1) {
         final session = _sessions[idx];
         session.lastMessage = content ?? '';
+        session.lastMsgType = msgType;
         session.lastTime = sendTime ?? '';
         if (!isFromMe) {
           session.unreadCount += 1;
@@ -150,6 +152,12 @@ class ChatListScreenState extends State<ChatListScreen> {
     } catch (_) {
       return '';
     }
+  }
+
+  String _getDisplayText(ChatSessionVO session) {
+    if (session.lastMessage.isEmpty) return '';
+    if (session.lastMsgType == 3) return '🎤 语音消息';
+    return session.lastMessage;
   }
 
   @override
@@ -296,7 +304,7 @@ class ChatListScreenState extends State<ChatListScreen> {
                                                   children: [
                                                     Expanded(
                                                       child: Text(
-                                                        session.lastMessage.isNotEmpty ? session.lastMessage : '',
+                                                        _getDisplayText(session),
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
                                                         style: TextStyle(fontSize: 13, color: AppColors.textSecondary.withValues(alpha: 0.75)),

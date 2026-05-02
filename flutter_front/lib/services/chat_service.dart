@@ -4,6 +4,7 @@ class ChatSessionVO {
   int friendId;
   String friendUsername;
   String lastMessage;
+  int? lastMsgType;
   int unreadCount;
   String lastTime;
 
@@ -11,6 +12,7 @@ class ChatSessionVO {
     required this.friendId,
     required this.friendUsername,
     required this.lastMessage,
+    this.lastMsgType,
     required this.unreadCount,
     required this.lastTime,
   });
@@ -20,6 +22,7 @@ class ChatSessionVO {
       friendId: json['friendId'] as int,
       friendUsername: json['friendUsername'] as String? ?? 'Unknown',
       lastMessage: json['lastMessage'] as String? ?? '',
+      lastMsgType: json['lastMsgType'] as int?,
       unreadCount: json['unreadCount'] as int? ?? 0,
       lastTime: json['lastTime'] as String? ?? '',
     );

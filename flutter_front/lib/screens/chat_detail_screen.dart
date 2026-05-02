@@ -1,9 +1,15 @@
 import 'dart:async';
+import 'dart:io' show File, Platform;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/websocket_service.dart';
+import '../services/file_upload_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/glassmorphism/glassmorphism_container.dart';
 
@@ -14,6 +20,7 @@ class ChatMessageItem {
   final String content;
   final String sendTime;
   final bool isFromMe;
+  final int msgType;
 
   ChatMessageItem({
     required this.msgId,
@@ -22,6 +29,7 @@ class ChatMessageItem {
     required this.content,
     required this.sendTime,
     required this.isFromMe,
+    this.msgType = 0,
   });
 }
 
@@ -41,16 +49,27 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> {
+class _ChatDetailScreenState extends State<ChatDetailScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
   final WebSocketService _wsService = WebSocketService();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   List<ChatMessageItem> _messages = [];
   bool _isLoading = true;
   StreamSubscription? _wsSubscription;
   int? _currentUserId;
+
+  bool _isRecording = false;
+  bool _isUploading = false;
+  Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
+
+  int? _playingMsgId;
+  late AnimationController _playAnimController;
 
   int get _friendId => widget.friendId ?? 0;
   String get _friendName => widget.friendName ?? 'Unknown';
@@ -59,6 +78,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void initState() {
     super.initState();
     _currentUserId = AuthService.userId;
+    _playAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() => _playingMsgId = null);
+        _playAnimController.stop();
+      }
+    });
     _initChat();
   }
 
@@ -68,14 +97,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _inputController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _recordingTimer?.cancel();
+    _playAnimController.dispose();
+    _audioPlayer.dispose();
+    _audioRecorder.dispose();
     super.dispose();
   }
 
   Future<void> _initChat() async {
     _wsService.connect();
-
     await Future.delayed(const Duration(milliseconds: 300));
-
     _wsSubscription = _wsService.messageStream.listen(_onMessageReceived);
 
     try {
@@ -92,6 +123,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               content: m.content,
               sendTime: m.sendTime,
               isFromMe: m.senderId == _currentUserId,
+              msgType: m.msgType,
             )).toList();
         _isLoading = false;
       });
@@ -117,6 +149,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       content: data['content'] as String,
       sendTime: data['sendTime'] as String,
       isFromMe: senderId == _currentUserId,
+      msgType: data['msgType'] as int? ?? 0,
     );
 
     final exists = _messages.any((m) => m.msgId == msg.msgId);
@@ -133,11 +166,149 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final sent = _wsService.sendMessage({
       'receiverId': _friendId,
       'content': text,
+      'msgType': 0,
     });
 
     if (sent) {
       _inputController.clear();
       _focusNode.requestFocus();
+    }
+  }
+
+  void _sendVoiceMessage(String url) {
+    _wsService.sendMessage({
+      'receiverId': _friendId,
+      'content': url,
+      'msgType': 3,
+    });
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      await _stopRecordingAndSend();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      if (!kIsWeb) {
+        final hasPermission = await _audioRecorder.hasPermission();
+        if (!hasPermission) return;
+      }
+
+      String path;
+      if (kIsWeb) {
+        path = '';
+      } else {
+        final dir = await getTemporaryDirectory();
+        path =
+            '${dir.path}${Platform.pathSeparator}voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
+
+      final config = kIsWeb
+          ? const RecordConfig(encoder: AudioEncoder.opus)
+          : const RecordConfig(encoder: AudioEncoder.aacLc);
+
+      await _audioRecorder.start(config, path: path);
+
+      setState(() {
+        _isRecording = true;
+        _recordingDuration = Duration.zero;
+      });
+
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) {
+          setState(() {
+            _recordingDuration += const Duration(seconds: 1);
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('startRecording error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('录音启动失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        _isUploading = true;
+      });
+
+      if (path != null && path.isNotEmpty) {
+        final url = await FileUploadService.uploadAudio(path);
+        if (url != null) {
+          _sendVoiceMessage(url);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('语音上传失败，请重试')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('stopRecording error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('录音停止失败: $e')),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isUploading = false;
+        _recordingDuration = Duration.zero;
+      });
+    }
+  }
+
+  void _cancelRecording() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    try {
+      await _audioRecorder.stop();
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _recordingDuration = Duration.zero;
+      });
+    }
+  }
+
+  Future<void> _playVoice(ChatMessageItem msg) async {
+    if (_playingMsgId == msg.msgId) {
+      await _audioPlayer.stop();
+      setState(() => _playingMsgId = null);
+      _playAnimController.stop();
+      return;
+    }
+
+    setState(() => _playingMsgId = msg.msgId);
+    _playAnimController.repeat();
+    try {
+      await _audioPlayer.play(UrlSource(msg.content));
+    } catch (e) {
+      debugPrint('playVoice error: $e');
+      if (mounted) {
+        setState(() => _playingMsgId = null);
+        _playAnimController.stop();
+      }
     }
   }
 
@@ -170,6 +341,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(1, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -179,6 +356,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           children: [
             _buildHeader(),
             Expanded(child: _isLoading ? _buildLoading() : _buildMessageList()),
+            if (_isRecording) _buildRecordingBar(),
             _buildMessageInput(),
           ],
         ),
@@ -305,13 +483,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          OrganicBubbleUser(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Text(
-              msg.content,
-              style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
-            ),
-          ),
+          msg.msgType == 3
+              ? _buildVoiceBubble(msg, isFromMe: true)
+              : OrganicBubbleUser(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                    msg.content,
+                    style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
+                  ),
+                ),
           const SizedBox(height: 4),
           Text(
             _formatTime(msg.sendTime),
@@ -346,13 +526,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OrganicBubbleAi(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  msg.content,
-                  style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
-                ),
-              ),
+              msg.msgType == 3
+                  ? _buildVoiceBubble(msg, isFromMe: false)
+                  : OrganicBubbleAi(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(
+                        msg.content,
+                        style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
+                      ),
+                    ),
               const SizedBox(height: 4),
               Text(
                 _formatTime(msg.sendTime),
@@ -362,6 +544,130 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildVoiceBubble(ChatMessageItem msg, {required bool isFromMe}) {
+    final isPlaying = _playingMsgId == msg.msgId;
+
+    return GestureDetector(
+      onTap: () => _playVoice(msg),
+      child: isFromMe
+          ? OrganicBubbleUser(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: _voiceBubbleContent(isPlaying, isFromMe),
+            )
+          : OrganicBubbleAi(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: _voiceBubbleContent(isPlaying, isFromMe),
+            ),
+    );
+  }
+
+  Widget _voiceBubbleContent(bool isPlaying, bool isFromMe) {
+    final accentColor = isFromMe ? const Color(0xFF3B82F6) : const Color(0xFFE8A87C);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!isFromMe) ...[
+          _buildWaveform(isPlaying, accentColor),
+          const SizedBox(width: 10),
+        ],
+        Icon(
+          isPlaying ? Icons.pause_circle : Icons.play_circle_fill,
+          size: 28,
+          color: accentColor,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '语音消息',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textPrimary.withValues(alpha: 0.8),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (isFromMe) ...[
+          const SizedBox(width: 10),
+          _buildWaveform(isPlaying, accentColor),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWaveform(bool isPlaying, Color color) {
+    return SizedBox(
+      width: 60,
+      height: 24,
+      child: AnimatedBuilder(
+        animation: _playAnimController,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: _WaveformPainter(
+              animationValue: isPlaying ? _playAnimController.value : 0,
+              color: color,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRecordingBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF6B6B).withValues(alpha: 0.15),
+            const Color(0xFFEE5A5A).withValues(alpha: 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(16),
+          bottomLeft: const Radius.circular(16),
+          bottomRight: const Radius.circular(24),
+        ),
+        border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFFFF6B6B),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            '录音中',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFFF6B6B),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _formatDuration(_recordingDuration),
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textLight,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: _cancelRecording,
+            child: const Icon(Icons.close, size: 18, color: AppColors.textLight),
+          ),
+        ],
+      ),
     );
   }
 
@@ -398,20 +704,34 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       _inputAction(Icons.attach_file, size: 18, color: AppColors.textLight),
                       const SizedBox(width: 16),
                       _inputAction(Icons.auto_awesome, size: 18, color: AppColors.orange200),
+                      const SizedBox(width: 16),
+                      _buildMicButton(),
                     ],
                   ),
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: AvatarBlob(
-                      size: 48,
-                      backgroundColor: AppColors.brandPrimary,
-                      border: Border.all(color: AppColors.brandPrimary, width: 0),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 4)),
-                      ],
-                      child: const Icon(Icons.send, size: 20, color: Colors.white),
-                    ),
-                  ),
+                  _isUploading
+                      ? const SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandPrimary),
+                            ),
+                          ),
+                        )
+                      : GestureDetector(
+                          onTap: _sendMessage,
+                          child: AvatarBlob(
+                            size: 48,
+                            backgroundColor: AppColors.brandPrimary,
+                            border: Border.all(color: AppColors.brandPrimary, width: 0),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 4)),
+                            ],
+                            child: const Icon(Icons.send, size: 20, color: Colors.white),
+                          ),
+                        ),
                 ],
               ),
             ),
@@ -421,7 +741,73 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
+  Widget _buildMicButton() {
+    return GestureDetector(
+      onTap: _toggleRecording,
+      child: AvatarBlob(
+        size: 36,
+        backgroundColor: _isRecording
+            ? const Color(0xFFFF6B6B).withValues(alpha: 0.15)
+            : AppColors.brandPrimary.withValues(alpha: 0.1),
+        border: Border.all(
+          color: _isRecording
+              ? const Color(0xFFFF6B6B).withValues(alpha: 0.4)
+              : AppColors.brandPrimary.withValues(alpha: 0.3),
+          width: 1,
+        ),
+        boxShadow: _isRecording
+            ? [BoxShadow(color: const Color(0xFFFF6B6B).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2))]
+            : const [],
+        child: Icon(
+          _isRecording ? Icons.stop : Icons.mic,
+          size: 16,
+          color: _isRecording ? const Color(0xFFFF6B6B) : AppColors.brandPrimary,
+        ),
+      ),
+    );
+  }
+
   Widget _inputAction(IconData icon, {double size = 20, Color? color}) {
     return Icon(icon, size: size, color: color ?? AppColors.textLight);
+  }
+}
+
+class _WaveformPainter extends CustomPainter {
+  final double animationValue;
+  final Color color;
+
+  _WaveformPainter({required this.animationValue, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.6)
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 2;
+
+    final barCount = 8;
+    final barWidth = 3.0;
+    final gap = (size.width - barCount * barWidth) / (barCount - 1);
+
+    for (int i = 0; i < barCount; i++) {
+      final x = i * (barWidth + gap);
+
+      double baseHeight;
+      if (animationValue > 0) {
+        final phase = (animationValue * barCount + i) % barCount;
+        final wave = (phase / barCount);
+        baseHeight = 4 + wave * (size.height - 6);
+      } else {
+        baseHeight = 4 + (i % 3 == 0 ? 8 : i % 2 == 0 ? 5 : 3).toDouble();
+      }
+
+      final y = (size.height - baseHeight) / 2;
+      canvas.drawRect(Rect.fromLTWH(x, y, barWidth, baseHeight), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveformPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
   }
 }

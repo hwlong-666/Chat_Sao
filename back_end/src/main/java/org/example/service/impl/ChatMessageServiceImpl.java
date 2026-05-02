@@ -30,11 +30,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     public ChatMessage saveMessage(Long senderId, Long receiverId, String content) {
+        return saveMessage(senderId, receiverId, content, 0);
+    }
+
+    @Override
+    public ChatMessage saveMessage(Long senderId, Long receiverId, String content, int msgType) {
         ChatMessage msg = new ChatMessage();
         msg.setSenderId(senderId);
         msg.setReceiverId(receiverId);
         msg.setChatType(0);
-        msg.setMsgType(0);
+        msg.setMsgType(msgType);
         msg.setContent(content);
         msg.setIsRead(0);
         msg.setSendTime(LocalDateTime.now());
@@ -75,6 +80,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 if (vo != null) {
                     vo.setLastMessage(msg.getContent());
                     vo.setLastTime(msg.getSendTime() != null ? msg.getSendTime().toString() : "");
+                    vo.setLastMsgType(msg.getMsgType());
                 }
             }
         }

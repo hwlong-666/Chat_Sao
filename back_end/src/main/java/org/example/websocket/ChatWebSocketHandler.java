@@ -61,8 +61,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
             Long receiverId = Long.valueOf(payload.get("receiverId").toString());
             String content = payload.get("content").toString();
+            int msgType = 0;
+            if (payload.get("msgType") != null) {
+                msgType = Integer.parseInt(payload.get("msgType").toString());
+            }
 
-            ChatMessage saved = chatMessageService.saveMessage(senderId, receiverId, content);
+            ChatMessage saved = chatMessageService.saveMessage(senderId, receiverId, content, msgType);
 
             try {
                 redisService.incrUnread(receiverId, senderId);
