@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'auth_service.dart';
 
 class ApiService {
   static final Dio _dio = Dio(BaseOptions(
@@ -6,7 +7,15 @@ class ApiService {
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
     headers: {'Content-Type': 'application/json'},
-  ));
+  ))..interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        final token = AuthService.token;
+        if (token != null && token.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+        handler.next(options);
+      },
+    ));
 
   static Dio get dio => _dio;
 
@@ -15,6 +24,10 @@ class ApiService {
       final response = await _dio.post(path, data: data);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await AuthService.logout();
+        throw ApiException('登录已过期，请重新登录');
+      }
       if (e.response != null) {
         throw ApiException(e.response?.data?['message'] ?? e.message ?? '请求失败');
       }
@@ -22,11 +35,15 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> get(String path) async {
+  static Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) async {
     try {
-      final response = await _dio.get(path);
+      final response = await _dio.get(path, queryParameters: queryParameters);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await AuthService.logout();
+        throw ApiException('登录已过期，请重新登录');
+      }
       if (e.response != null) {
         throw ApiException(e.response?.data?['message'] ?? e.message ?? '请求失败');
       }

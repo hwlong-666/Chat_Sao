@@ -80,8 +80,6 @@ class AuthService {
     _cachedUserId = userId;
     _cachedUsername = username;
     _cachedAvatarUrl = avatarUrl;
-
-    ApiService.dio.options.headers['Authorization'] = 'Bearer $token';
   }
 
   static Future<void> logout() async {
@@ -94,6 +92,5 @@ class AuthService {
     _cachedUserId = null;
     _cachedUsername = null;
     _cachedAvatarUrl = null;
-    ApiService.dio.options.headers.remove('Authorization');
   }
 }
