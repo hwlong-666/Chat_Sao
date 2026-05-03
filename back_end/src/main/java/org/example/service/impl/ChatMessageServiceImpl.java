@@ -63,9 +63,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         for (Map<String, Object> friend : friends) {
             Long friendId = ((Number) friend.get("userId")).longValue();
             String username = (String) friend.get("username");
+            String avatarUrl = (String) friend.get("avatarUrl");
             ChatSessionVO vo = new ChatSessionVO();
             vo.setFriendId(friendId);
             vo.setFriendUsername(username != null ? username : "Unknown");
+            vo.setFriendAvatarUrl(avatarUrl);
             vo.setLastMessage("");
             vo.setUnreadCount(0);
             vo.setLastTime("");

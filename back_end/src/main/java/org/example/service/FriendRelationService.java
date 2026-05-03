@@ -17,4 +17,6 @@ public interface FriendRelationService {
     void rejectFriend(Long userId, Long requesterId);
 
     List<FriendInfo> getFriendList(Long userId);
+
+    void removeFriend(Long userId, Long friendId);
 }

@@ -47,4 +47,33 @@ public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper, UserInfo> i
 
         return jwtUtil.generateToken(user.getUserId(), user.getUsername());
     }
+
+    @Override
+    public void updateProfile(Long userId, String username, String avatarUrl) {
+        UserInfo user = getById(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        if (username != null && !username.isEmpty() && !username.equals(user.getUsername())) {
+            LambdaQueryWrapper<UserInfo> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(UserInfo::getUsername, username);
+            wrapper.ne(UserInfo::getUserId, userId);
+            if (getOne(wrapper) != null) {
+                throw new RuntimeException("用户名已被占用");
+            }
+            user.setUsername(username);
+        }
+
+        if (avatarUrl != null) {
+            user.setAvatarUrl(avatarUrl);
+        }
+
+        updateById(user);
+    }
+
+    @Override
+    public UserInfo getProfile(Long userId) {
+        return getById(userId);
+    }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
@@ -8,7 +9,7 @@ import '../widgets/app_card.dart';
 import '../widgets/glassmorphism/glassmorphism_container.dart';
 
 class ChatListScreen extends StatefulWidget {
-  final Function(int friendId, String friendName) onChatSelect;
+  final Function(int friendId, String friendName, String? friendAvatarUrl) onChatSelect;
 
   const ChatListScreen({super.key, required this.onChatSelect});
 
@@ -115,7 +116,7 @@ class ChatListScreenState extends State<ChatListScreen> {
       await ChatService.markAsRead(friendId);
     } catch (_) {}
 
-    widget.onChatSelect(friendId, friendName);
+    widget.onChatSelect(friendId, friendName, idx != -1 ? _sessions[idx].friendAvatarUrl : null);
   }
 
   Color _avatarColor(int index) {
@@ -157,6 +158,7 @@ class ChatListScreenState extends State<ChatListScreen> {
   String _getDisplayText(ChatSessionVO session) {
     if (session.lastMessage.isEmpty) return '';
     if (session.lastMsgType == 3) return '🎤 语音消息';
+    if (session.lastMsgType == 2) return '📷 图片消息';
     return session.lastMessage;
   }
 
@@ -257,7 +259,18 @@ class ChatListScreenState extends State<ChatListScreen> {
                                                 boxShadow: [
                                                   BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 3)),
                                                 ],
-                                                child: Icon(_avatarIcon(originalIndex), color: color, size: 26),
+                                                child: session.friendAvatarUrl != null && session.friendAvatarUrl!.isNotEmpty
+                                                    ? ClipOval(
+                                                        child: CachedNetworkImage(
+                                                          imageUrl: session.friendAvatarUrl!,
+                                                          fit: BoxFit.cover,
+                                                          width: 56,
+                                                          height: 56,
+                                                          placeholder: (_, __) => Icon(_avatarIcon(originalIndex), color: color, size: 26),
+                                                          errorWidget: (_, __, ___) => Icon(_avatarIcon(originalIndex), color: color, size: 26),
+                                                        ),
+                                                      )
+                                                    : Icon(_avatarIcon(originalIndex), color: color, size: 26),
                                               ),
                                               Positioned(
                                                 bottom: -2,

@@ -163,4 +163,27 @@ public class FriendRelationServiceImpl implements FriendRelationService {
         }
         return result;
     }
+
+    @Override
+    public void removeFriend(Long userId, Long friendId) {
+        LambdaQueryWrapper<FriendRelation> wrapper1 = new LambdaQueryWrapper<>();
+        wrapper1.eq(FriendRelation::getUserId, userId)
+                .eq(FriendRelation::getFriendId, friendId)
+                .eq(FriendRelation::getStatus, 1);
+        FriendRelation rel1 = friendRelationMapper.selectOne(wrapper1);
+
+        if (rel1 == null) {
+            throw new RuntimeException("不是好友关系");
+        }
+        friendRelationMapper.deleteById(rel1.getId());
+
+        LambdaQueryWrapper<FriendRelation> wrapper2 = new LambdaQueryWrapper<>();
+        wrapper2.eq(FriendRelation::getUserId, friendId)
+                .eq(FriendRelation::getFriendId, userId)
+                .eq(FriendRelation::getStatus, 1);
+        FriendRelation rel2 = friendRelationMapper.selectOne(wrapper2);
+        if (rel2 != null) {
+            friendRelationMapper.deleteById(rel2.getId());
+        }
+    }
 }

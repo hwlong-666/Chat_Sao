@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'auth_service.dart';
@@ -50,6 +51,35 @@ class FileUploadService {
       return null;
     } catch (e) {
       debugPrint('uploadAudio error: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> uploadImage(Uint8List bytes, {String filename = 'image.jpg'}) async {
+    final token = AuthService.token;
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: filename),
+      });
+
+      final response = await _dio.post(
+        '/api/file/upload',
+        data: formData,
+        options: Options(headers: {
+          'Authorization': 'Bearer $token',
+        }),
+      );
+
+      final result = response.data as Map<String, dynamic>;
+      final code = result['code'] as int?;
+      if (code == 200) {
+        return result['data'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('uploadImage error: $e');
       return null;
     }
   }

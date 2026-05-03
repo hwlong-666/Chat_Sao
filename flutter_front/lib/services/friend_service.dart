@@ -73,4 +73,12 @@ class FriendService {
       throw ApiException(result['message'] ?? '拒绝好友请求失败');
     }
   }
+
+  static Future<void> removeFriend(int friendId) async {
+    final result = await ApiService.delete('/api/friend/remove', queryParameters: {'friendId': friendId});
+    final code = result['code'] as int?;
+    if (code != 200) {
+      throw ApiException(result['message'] ?? '删除好友失败');
+    }
+  }
 }

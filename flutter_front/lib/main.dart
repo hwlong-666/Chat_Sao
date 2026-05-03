@@ -43,6 +43,7 @@ class _AppNavigatorState extends State<AppNavigator> {
   bool _isCheckingAuth = true;
   int? _chatFriendId;
   String? _chatFriendName;
+  String? _chatFriendAvatarUrl;
 
   @override
   void initState() {
@@ -61,12 +62,13 @@ class _AppNavigatorState extends State<AppNavigator> {
     }
   }
 
-  void _navigateTo(String screen, {int? friendId, String? friendName}) {
+  void _navigateTo(String screen, {int? friendId, String? friendName, String? friendAvatarUrl}) {
     setState(() {
       _currentScreen = screen;
       if (friendId != null) {
         _chatFriendId = friendId;
         _chatFriendName = friendName;
+        _chatFriendAvatarUrl = friendAvatarUrl;
       }
     });
     if (screen == 'chatList') {
@@ -171,9 +173,9 @@ class _AppNavigatorState extends State<AppNavigator> {
       case 'login':
         return LoginScreen(onLogin: _handleLogin);
       case 'chatList':
-        return ChatListScreen(onChatSelect: (friendId, friendName) => _navigateTo('chat', friendId: friendId, friendName: friendName));
+        return ChatListScreen(onChatSelect: (friendId, friendName, friendAvatarUrl) => _navigateTo('chat', friendId: friendId, friendName: friendName, friendAvatarUrl: friendAvatarUrl));
       case 'chat':
-        return ChatDetailScreen(onBack: () => _navigateTo('chatList'), friendId: _chatFriendId, friendName: _chatFriendName);
+        return ChatDetailScreen(onBack: () => _navigateTo('chatList'), friendId: _chatFriendId, friendName: _chatFriendName, friendAvatarUrl: _chatFriendAvatarUrl);
       case 'contacts':
         return const ContactsScreen();
       case 'settings':

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_colors.dart';
 import '../services/friend_service.dart';
 import '../widgets/app_card.dart';
@@ -347,6 +348,251 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
     return colors[index % colors.length];
   }
 
+  void _showFriendActions(FriendInfo friend) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFF8F0), Color(0xFFF0F4FF)],
+            ),
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: _avatarColor(_friends.indexOf(friend)).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Center(
+                        child: Text(
+                          friend.username[0].toUpperCase(),
+                          style: TextStyle(
+                            color: _avatarColor(_friends.indexOf(friend)),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(friend.username, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary)),
+                          Text('ID: ${friend.userId}', style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.close, size: 16, color: AppColors.textLight),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDeleteFriendConfirm(friend);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_remove, color: Color(0xFFFF6B6B), size: 18),
+                        SizedBox(width: 8),
+                        Text('删除好友', style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteFriendConfirm(FriendInfo friend) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Delete Friend',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (ctx, anim1, anim2) {
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 340,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFFF8F0), Color(0xFFF0F4FF)],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10)),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [const Color(0xFFFF6B6B).withValues(alpha: 0.1), AppColors.orange200.withValues(alpha: 0.1)],
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(colors: [Color(0xFFFF6B6B), Color(0xFFEE5A5A)]),
+                              borderRadius: BorderRadius.all(Radius.circular(16)),
+                            ),
+                            child: const Icon(Icons.warning_amber, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            '删除好友',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Text(
+                            '确定要删除好友 "${friend.username}" 吗？删除后双方好友关系将解除。',
+                            style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.6),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => Navigator.pop(ctx),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.8),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.15)),
+                                    ),
+                                    child: const Center(
+                                      child: Text('取消', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    Navigator.pop(ctx);
+                                    try {
+                                      await FriendService.removeFriend(friend.userId);
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('已删除好友 ${friend.username}'),
+                                          backgroundColor: const Color(0xFFFF6B6B),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                      );
+                                      _loadData();
+                                    } catch (e) {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(e.toString()),
+                                          backgroundColor: AppColors.redBadge,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(colors: [Color(0xFFFF6B6B), Color(0xFFEE5A5A)]),
+                                      borderRadius: BorderRadius.circular(20),
+                                      boxShadow: [
+                                        BoxShadow(color: const Color(0xFFFF6B6B).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Text('删除', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (ctx, anim1, anim2, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
+          child: FadeTransition(opacity: anim1, child: child),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -646,7 +892,9 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
                         ),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: GlassmorphismContainer.glass(
+                          child: GestureDetector(
+                            onLongPress: () => _showFriendActions(friend),
+                            child: GlassmorphismContainer.glass(
                             borderRadius: 32,
                             padding: const EdgeInsets.all(16),
                             child: Row(
@@ -658,25 +906,33 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
                                   boxShadow: [
                                     BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 3)),
                                   ],
-                                  child: Center(
-                                    child: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
-                                        ? ClipOval(
-                                            child: Image.network(
-                                              friend.avatarUrl!,
-                                              width: 32,
-                                              height: 32,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => Text(
+                                  child: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
+                                      ? ClipOval(
+                                          child: CachedNetworkImage(
+                                            imageUrl: friend.avatarUrl!,
+                                            width: 56,
+                                            height: 56,
+                                            fit: BoxFit.cover,
+                                            placeholder: (_, __) => Center(
+                                              child: Text(
                                                 friend.username[0].toUpperCase(),
                                                 style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 20),
                                               ),
                                             ),
-                                          )
-                                        : Text(
+                                            errorWidget: (_, __, ___) => Center(
+                                              child: Text(
+                                                friend.username[0].toUpperCase(),
+                                                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 20),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(
                                             friend.username[0].toUpperCase(),
                                             style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 20),
                                           ),
-                                  ),
+                                        ),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -689,27 +945,52 @@ class _ContactsScreenState extends State<ContactsScreen> with SingleTickerProvid
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF2D2D2D),
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: Radius.circular(40 * 0.4),
-                                      topRight: Radius.circular(40 * 0.6),
-                                      bottomLeft: Radius.circular(40 * 0.55),
-                                      bottomRight: Radius.circular(40 * 0.45),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2D2D2D),
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: Radius.circular(40 * 0.4),
+                                          topRight: Radius.circular(40 * 0.6),
+                                          bottomLeft: Radius.circular(40 * 0.55),
+                                          bottomRight: Radius.circular(40 * 0.45),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 3)),
+                                        ],
+                                      ),
+                                      child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 14),
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 14),
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: () => _showDeleteFriendConfirm(friend),
+                                      child: Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.only(
+                                            topLeft: Radius.circular(40 * 0.4),
+                                            topRight: Radius.circular(40 * 0.6),
+                                            bottomLeft: Radius.circular(40 * 0.55),
+                                            bottomRight: Radius.circular(40 * 0.45),
+                                          ),
+                                          border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.3)),
+                                        ),
+                                        child: const Icon(Icons.person_remove, color: Color(0xFFFF6B6B), size: 14),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
                         ),
+                      ),
                       );
                     },
                   ),

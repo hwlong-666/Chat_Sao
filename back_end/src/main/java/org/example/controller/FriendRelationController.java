@@ -60,4 +60,11 @@ public class FriendRelationController {
         List<FriendInfo> friends = friendRelationService.getFriendList(userId);
         return Result.success(friends);
     }
+
+    @DeleteMapping("/remove")
+    public Result<Void> removeFriend(@RequestParam Long friendId) {
+        Long userId = UserContext.getUserId();
+        friendRelationService.removeFriend(userId, friendId);
+        return Result.success();
+    }
 }

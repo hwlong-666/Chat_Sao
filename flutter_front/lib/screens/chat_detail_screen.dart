@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io' show File, Platform;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
@@ -37,12 +40,14 @@ class ChatDetailScreen extends StatefulWidget {
   final VoidCallback onBack;
   final int? friendId;
   final String? friendName;
+  final String? friendAvatarUrl;
 
   const ChatDetailScreen({
     super.key,
     required this.onBack,
     this.friendId,
     this.friendName,
+    this.friendAvatarUrl,
   });
 
   @override
@@ -73,6 +78,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   int get _friendId => widget.friendId ?? 0;
   String get _friendName => widget.friendName ?? 'Unknown';
+  String? get _friendAvatarUrl => widget.friendAvatarUrl;
 
   @override
   void initState() {
@@ -181,6 +187,54 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       'content': url,
       'msgType': 3,
     });
+  }
+
+  void _sendImageMessage(String url) {
+    _wsService.sendMessage({
+      'receiverId': _friendId,
+      'content': url,
+      'msgType': 2,
+    });
+  }
+
+  Future<void> _pickAndSendImage() async {
+    try {
+      final picker = ImagePicker();
+      final xFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 80,
+      );
+      if (xFile == null) return;
+
+      setState(() => _isUploading = true);
+
+      final Uint8List bytes = await xFile.readAsBytes();
+      final filename = xFile.name;
+
+      final url = await FileUploadService.uploadImage(bytes, filename: filename);
+      if (url != null) {
+        _sendImageMessage(url);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('图片上传失败，请重试')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('pickAndSendImage error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择图片失败: $e')),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() => _isUploading = false);
+    }
   }
 
   Future<void> _toggleRecording() async {
@@ -396,12 +450,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     backgroundColor: color.withValues(alpha: 0.2),
                     border: Border.all(color: Colors.white, width: 2),
                     boxShadow: const [],
-                    child: Center(
-                      child: Text(
-                        _friendName[0].toUpperCase(),
-                        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ),
+                    child: _friendAvatarUrl != null && _friendAvatarUrl!.isNotEmpty
+                        ? ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: _friendAvatarUrl!,
+                              fit: BoxFit.cover,
+                              width: 40,
+                              height: 40,
+                              placeholder: (_, __) => Center(
+                                child: Text(
+                                  _friendName[0].toUpperCase(),
+                                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => Center(
+                                child: Text(
+                                  _friendName[0].toUpperCase(),
+                                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              _friendName[0].toUpperCase(),
+                              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -485,13 +560,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         children: [
           msg.msgType == 3
               ? _buildVoiceBubble(msg, isFromMe: true)
-              : OrganicBubbleUser(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Text(
-                    msg.content,
-                    style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
-                  ),
-                ),
+              : msg.msgType == 2
+                  ? _buildImageBubble(msg, isFromMe: true)
+                  : OrganicBubbleUser(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(
+                        msg.content,
+                        style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
+                      ),
+                    ),
           const SizedBox(height: 4),
           Text(
             _formatTime(msg.sendTime),
@@ -514,12 +591,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           boxShadow: [
             BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 6, offset: const Offset(0, 2)),
           ],
-          child: Center(
-            child: Text(
-              _friendName[0].toUpperCase(),
-              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-          ),
+          child: _friendAvatarUrl != null && _friendAvatarUrl!.isNotEmpty
+              ? ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: _friendAvatarUrl!,
+                    fit: BoxFit.cover,
+                    width: 36,
+                    height: 36,
+                    placeholder: (_, __) => Center(
+                      child: Text(
+                        _friendName[0].toUpperCase(),
+                        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ),
+                    errorWidget: (_, __, ___) => Center(
+                      child: Text(
+                        _friendName[0].toUpperCase(),
+                        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    _friendName[0].toUpperCase(),
+                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
         ),
         const SizedBox(width: 12),
         Flexible(
@@ -528,13 +626,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             children: [
               msg.msgType == 3
                   ? _buildVoiceBubble(msg, isFromMe: false)
-                  : OrganicBubbleAi(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Text(
-                        msg.content,
-                        style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
-                      ),
-                    ),
+                  : msg.msgType == 2
+                      ? _buildImageBubble(msg, isFromMe: false)
+                      : OrganicBubbleAi(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: Text(
+                            msg.content,
+                            style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
+                          ),
+                        ),
               const SizedBox(height: 4),
               Text(
                 _formatTime(msg.sendTime),
@@ -544,6 +644,82 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildImageBubble(ChatMessageItem msg, {required bool isFromMe}) {
+    return GestureDetector(
+      onTap: () => _showImagePreview(msg.content),
+      child: ClipRRect(
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: Radius.circular(isFromMe ? 8 : 20),
+          bottomLeft: Radius.circular(isFromMe ? 20 : 8),
+          bottomRight: const Radius.circular(20),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+          child: CachedNetworkImage(
+            imageUrl: msg.content,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(
+              width: 120,
+              height: 120,
+              color: Colors.grey[200],
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: 120,
+              height: 80,
+              color: Colors.grey[200],
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.broken_image, size: 24, color: Colors.grey),
+                  SizedBox(height: 4),
+                  Text('加载失败', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showImagePreview(String imageUrl) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black87,
+        transitionDuration: const Duration(milliseconds: 250),
+        pageBuilder: (context, _, __) {
+          return GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Center(
+                child: InteractiveViewer(
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
     );
   }
 
@@ -701,7 +877,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     children: [
                       _inputAction(Icons.add, color: AppColors.textLight),
                       const SizedBox(width: 16),
-                      _inputAction(Icons.attach_file, size: 18, color: AppColors.textLight),
+                      GestureDetector(
+                        onTap: _pickAndSendImage,
+                        child: _inputAction(Icons.image, size: 20, color: AppColors.brandPrimary),
+                      ),
                       const SizedBox(width: 16),
                       _inputAction(Icons.auto_awesome, size: 18, color: AppColors.orange200),
                       const SizedBox(width: 16),

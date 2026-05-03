@@ -3,6 +3,7 @@ import 'api_service.dart';
 class ChatSessionVO {
   int friendId;
   String friendUsername;
+  String? friendAvatarUrl;
   String lastMessage;
   int? lastMsgType;
   int unreadCount;
@@ -11,6 +12,7 @@ class ChatSessionVO {
   ChatSessionVO({
     required this.friendId,
     required this.friendUsername,
+    this.friendAvatarUrl,
     required this.lastMessage,
     this.lastMsgType,
     required this.unreadCount,
@@ -21,6 +23,7 @@ class ChatSessionVO {
     return ChatSessionVO(
       friendId: json['friendId'] as int,
       friendUsername: json['friendUsername'] as String? ?? 'Unknown',
+      friendAvatarUrl: json['friendAvatarUrl'] as String?,
       lastMessage: json['lastMessage'] as String? ?? '',
       lastMsgType: json['lastMsgType'] as int?,
       unreadCount: json['unreadCount'] as int? ?? 0,
